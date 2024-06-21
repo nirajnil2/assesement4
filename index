@@ -1,0 +1,183 @@
+import { useState, useEffect } from "react";
+import { ethers } from "ethers";
+import atm_abi from "../artifacts/contracts/Assessment.sol/Assessment.json";
+
+// Constants
+const contractAddress = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
+const atmABI = atm_abi.abi;
+
+// Custom hook for Ethereum wallet
+const useEthWallet = () => {
+  const [ethWallet, setEthWallet] = useState(undefined);
+  const [account, setAccount] = useState(undefined);
+
+  useEffect(() => {
+    const getWallet = async () => {
+      if (window.ethereum) {
+        setEthWallet(new ethers.providers.Web3Provider(window.ethereum));
+        try {
+          const accounts = await window.ethereum.request({ method: "eth_accounts" });
+          if (accounts && accounts.length > 0) {
+            setAccount(accounts[0]);
+          }
+        } catch (error) {
+          console.error("Error fetching accounts:", error);
+        }
+      }
+    };
+    getWallet();
+  }, []);
+
+  const connectAccount = async () => {
+    if (!ethWallet) {
+      alert("MetaMask wallet is required to connect");
+      return;
+    }
+    try {
+      const accounts = await ethWallet.request({ method: "eth_requestAccounts" });
+      if (accounts && accounts.length > 0) {
+        setAccount(accounts[0]);
+      }
+    } catch (error) {
+      console.error("Error connecting account:", error);
+    }
+  };
+
+  return { ethWallet, account, connectAccount };
+};
+
+// Custom hook for ATM contract
+const useATMContract = (ethWallet) => {
+  const [atm, setATM] = useState(undefined);
+  const [balance, setBalance] = useState(undefined);
+
+  useEffect(() => {
+    const getATMContract = async () => {
+      if (ethWallet) {
+        const signer = ethWallet.getSigner();
+        const atmContract = new ethers.Contract(contractAddress, atmABI, signer);
+        setATM(atmContract);
+      }
+    };
+    getATMContract();
+  }, [ethWallet]);
+
+  const getBalance = async () => {
+    if (atm) {
+      try {
+        const balance = await atm.getBalance();
+        setBalance(balance.toNumber());
+      } catch (error) {
+        console.error("Error fetching balance:", error);
+      }
+    }
+  };
+
+  const deposit = async () => {
+    if (atm) {
+      try {
+        const tx = await atm.deposit(1, { value: ethers.utils.parseEther("1") });
+        await tx.wait();
+        getBalance();
+      } catch (error) {
+        console.error("Error depositing ETH:", error);
+      }
+    }
+  };
+
+  const withdraw = async () => {
+    if (atm) {
+      try {
+        const tx = await atm.withdraw(ethers.utils.parseEther("1"));
+        await tx.wait();
+        getBalance();
+      } catch (error) {
+        console.error("Error withdrawing ETH:", error);
+      }
+    }
+  };
+
+  return { atm, balance, getBalance, deposit, withdraw };
+};
+
+// Main Component
+export default function HomePage() {
+  const { ethWallet, account, connectAccount } = useEthWallet();
+  const { atm, balance, getBalance, deposit, withdraw } = useATMContract(ethWallet);
+
+  useEffect(() => {
+    if (account && atm && balance === undefined) {
+      getBalance();
+    }
+  }, [account, atm, balance, getBalance]);
+
+  const initUser = () => {
+    if (!ethWallet) {
+      return <p>Please install MetaMask to use this ATM.</p>;
+    }
+    if (!account) {
+      return <button className="connect-button" onClick={connectAccount}>Please connect your MetaMask wallet</button>;
+    }
+    if (balance === undefined) {
+      getBalance();
+    }
+    return (
+      <div>
+        <p>Your Account: {account}</p>
+        <p>Your Balance:  {balance}</p>
+        <button className="deposit-button" onClick={deposit}>Deposit 1 ETH</button>
+        <button className="withdraw-button" onClick={withdraw}>Withdraw 1 ETH</button>
+      </div>
+    );
+  };
+
+  return (
+    <main className="container">
+      <header>
+        <h1>Welcome to the Metacrafters ATM!</h1>
+      </header>
+      {initUser()}
+      <style jsx>{`
+        .container {
+          text-align: center;
+        }
+        .connect-button {
+          background-color: #4CAF50; /* Green */
+          border: none;
+          color: white;
+          padding: 15px 32px;
+          text-align: center;
+          text-decoration: none;
+          display: inline-block;
+          font-size: 16px;
+          margin: 4px 2px;
+          cursor: pointer;
+        }
+        .deposit-button {
+          background-color: #008CBA; /* Blue */
+          border: none;
+          color: white;
+          padding: 15px 32px;
+          text-align: center;
+          text-decoration: none;
+          display: inline-block;
+          font-size: 16px;
+          margin: 4px 2px;
+          cursor: pointer;
+        }
+        .withdraw-button {
+          background-color: #f44336; /* Red */
+          border: none;
+          color: white;
+          padding: 15px 32px;
+          text-align: center;
+          text-decoration: none;
+          display: inline-block;
+          font-size: 16px;
+          margin: 4px 2px;
+          cursor: pointer;
+        }
+      `}</style>
+    </main>
+  );
+}
